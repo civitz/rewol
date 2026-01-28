@@ -189,3 +189,5 @@ pip-selfcheck.json
 .aider*
 wolserver/config.yaml
 wolserver/startdeck.sh
+caddy/*
+*/config.yaml

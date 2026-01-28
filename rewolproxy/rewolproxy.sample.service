@@ -1,0 +1,14 @@
+[Unit]
+Description=Rewolproxy Service
+After=network.target
+
+[Service]
+Type=simple
+User=rewolproxy
+WorkingDirectory=/opt/rewolproxy
+ExecStart=/usr/bin/python3 /opt/rewolproxy/rewolproxy.py --config=/etc/rewolproxy/config.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

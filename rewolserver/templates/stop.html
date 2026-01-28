@@ -1,0 +1,22 @@
+<html>
+<head>
+    <title>Stopping backend</title>
+</head>
+<body>
+    {% if success %}
+    {% if shutdown %}
+
+    <h1>Machine has been shut down!</h1>
+    The backend service has been successfully shut down.
+    
+    {% else %}
+    <h1>Backend service has stopped!</h1>
+    {% endif %}
+    <p><a href="{{ url_for('proxy') }}">Return to home: {{ url_for('proxy') }}</a></p>
+    {% else %}
+    <h1>Error stopping the backend service</h1>
+    <p>We've had a problem stopping the service: {{error_message}}</p>
+    <p>Please return to <a href="/">home</a> and repeat.</p>
+    {% endif %}
+</body>
+</html>

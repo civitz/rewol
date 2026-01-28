@@ -1,0 +1,14 @@
+
+backends:
+  - host: "The "
+    address: "x.x.x.x" # the IP
+    password: "" # the password
+
+service:
+  # these are configuration of the wolserver service
+  # use generatepwdandsalt.py to calculate these
+  password: "<base64 of the salted password>"
+  salt: "<base64 of salt>"
+  port: 5000
+
+

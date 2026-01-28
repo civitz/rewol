@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Starting backend</title>
+</head>
+<body>
+    {% if success %}
+    <h1>Backend service has started!</h1>
+    Please find the service at this url: <a href="{{service_link}}">{{service_link}}</a>
+    {% else %}
+    <h1>Error starting the backend service</h1>
+    <p>We've had a problem starting the service: {{error_message}}</p>
+    <p>Please return to <a href="/">home</a> and repeat.</p>
+    {% endif %}
+</body>
+</html>
