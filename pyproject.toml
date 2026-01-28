@@ -1,0 +1,30 @@
+[project]
+name = "rewol"
+version = "0.1.0"
+description = "Remote Wake-on-LAN system with proxy and server components"
+authors = [
+    {name = "Roberto", email = "piva.roberto.88@gmail.com"}
+]
+dependencies = [
+    "wakeonlan>=3.0.0",
+    "prometheus-client>=0.17.0",
+    "pyyaml>=6.0",
+    "flask>=2.0.0",
+    "requests>=2.0.0",
+]
+
+[project.scripts]
+rewolproxy = "rewolproxy:main"
+rewolserver = "rewolserver.rewol:main"
+
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rewolproxy*", "rewolserver*"]
+exclude = ["caddy*", "tests*", ".venv*", "venv*", ".venvnuc*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "rewolproxy/tests", "rewolserver/tests"]

@@ -15,17 +15,17 @@ def test_full_integration():
     """Test full integration of the service"""
     # Create a temporary config file
     config_content = """
-password:
-  hash: "dGVzdGhhc2g="
-  salt: "dGVzdHNhbHQ="
-server:
-  port: 8888
-  check_interval: 10
-hosts:
-  - host: "testhost"
-    macAddress: "00:11:22:33:44:55"
-    ip: "127.0.0.1"
-"""
+    password:
+      hash: "AhX05iK50PRRECCIkDq8Pm1BXsfj9fZphdhRJgh7q24="
+      salt: "dGVzdHNhbHQ="
+    server:
+      port: 8888
+      check_interval: 10
+    hosts:
+      - host: "testhost"
+        macAddress: "00:11:22:33:44:55"
+        ip: "127.0.0.1"
+    """
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(config_content)

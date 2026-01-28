@@ -180,5 +180,10 @@ def send_wol():
         return {"success": False, "error": f"Connection error: {str(e)}"}, 500
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for rewolserver"""
     app.run(host="0.0.0.0", port=SERVICE_PORT, debug=True)
+
+
+if __name__ == "__main__":
+    main()
