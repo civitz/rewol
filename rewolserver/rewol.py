@@ -1,11 +1,15 @@
+import argparse
 import requests
-from flask import Flask, request, Response, render_template
+from flask import Flask, request, Response, render_template, jsonify
 import yaml
 import hashlib
 import base64
 import logging
 from logging.handlers import RotatingFileHandler
 import re
+import threading
+import time
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -26,21 +30,147 @@ file_handler.setFormatter(
 )
 app.logger.addHandler(file_handler)
 
-try:
-    with open("config.yaml", "r") as file:
-        config = yaml.safe_load(file)
-except FileNotFoundError:
-    app.logger.error("Config file not found")
-    raise
-except yaml.YAMLError as e:
-    app.logger.error(f"Error parsing config file: {e}")
-    raise
 
-# Configuration
-BACKENDS = config.get("backends", [])
-SERVICE_PASSWORD = config["service"]["password"]
-SERVICE_SALT = config["service"]["salt"]
-SERVICE_PORT = config["service"]["port"]
+def load_config(config_path="config.yaml"):
+    """Load configuration from YAML file"""
+    try:
+        with open(config_path, "r") as file:
+            return yaml.safe_load(file)
+    except FileNotFoundError:
+        app.logger.error(f"Config file not found: {config_path}")
+        raise
+    except yaml.YAMLError as e:
+        app.logger.error(f"Error parsing config file {config_path}: {e}")
+        raise
+
+
+# Configuration variables (will be set in main())
+BACKENDS = []
+SERVICE_PASSWORD = ""
+SERVICE_SALT = ""
+SERVICE_PORT = 11000
+
+
+class ProxyStatusCache:
+    """Thread-safe cache for proxy status information"""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.cache = {}
+        self.last_updated = None
+
+    def replace_all(self, new_data):
+        """Completely replace cache with new data (full replacement strategy)"""
+        with self.lock:
+            # Add timestamp to each host for debugging
+            for host_name, host_data in new_data.items():
+                host_data["last_checked"] = datetime.now()
+
+            # Full replacement - discard all old data
+            self.cache = new_data.copy()
+            self.last_updated = datetime.now()
+
+    def get_all(self):
+        """Get all cached proxy status data"""
+        with self.lock:
+            return {"hosts": self.cache.copy(), "last_updated": self.last_updated}
+
+    def is_stale(self, max_age_seconds=30):
+        """Check if cache is stale"""
+        with self.lock:
+            if self.last_updated is None:
+                return True
+            return (datetime.now() - self.last_updated) > timedelta(
+                seconds=max_age_seconds
+            )
+
+
+class BackgroundMonitorThread:
+    """Background thread for continuous proxy monitoring"""
+
+    def __init__(self, backends, cache):
+        self.backends = backends
+        self.cache = cache
+        self.running = False
+        self.thread = None
+        self.monitor_interval = 5  # Check proxies every 5 seconds
+        self.logger = app.logger
+
+    def _check_proxy_status(self, backend):
+        """Check status of a single proxy backend"""
+        try:
+            url = f"http://{backend['address']}/status"
+            response = requests.get(url, timeout=3)
+
+            if response.status_code == 200:
+                hosts = parse_prometheus_metrics(response.text)
+                # Add backend info to each host
+                result = {}
+                for host_name, host_data in hosts.items():
+                    host_data["backend_name"] = backend["host"]
+                    host_data["backend_address"] = backend["address"]
+                    host_data["backend_password"] = backend["password"]
+                    host_data["name"] = host_name
+                    host_data["is_proxy_down"] = False
+                    result[host_name] = host_data
+                return result
+            else:
+                self.logger.warning(
+                    f"Backend {backend['host']} returned status {response.status_code}"
+                )
+                return None
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error connecting to backend {backend['host']}: {e}")
+            return None
+
+    def _monitor_loop(self):
+        """Main monitoring loop"""
+        while self.running:
+            start_time = time.time()
+            new_cache_data = {}
+
+            # Check all backends sequentially
+            for backend in self.backends:
+                status = self._check_proxy_status(backend)
+                if status:
+                    new_cache_data.update(status)
+                else:
+                    # Add placeholder for down backend
+                    host_name = f"{backend['host']} (proxy down)"
+                    new_cache_data[host_name] = {
+                        "name": host_name,
+                        "status": 0,
+                        "backend_name": backend["host"],
+                        "backend_address": backend["address"],
+                        "backend_password": backend["password"],
+                        "is_proxy_down": True,
+                    }
+
+            # Replace all cache data atomically
+            self.cache.replace_all(new_cache_data)
+
+            # Sleep for remaining interval time
+            elapsed = time.time() - start_time
+            sleep_time = max(0, self.monitor_interval - elapsed)
+            time.sleep(sleep_time)
+
+    def start(self):
+        """Start the monitoring thread"""
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self._monitor_loop, daemon=True)
+            self.thread.start()
+            self.logger.info("Background monitoring thread started")
+
+    def stop(self):
+        """Stop the monitoring thread"""
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=5)
+            if self.thread.is_alive():
+                self.logger.warning("Monitoring thread did not stop gracefully")
+            else:
+                self.logger.info("Background monitoring thread stopped")
 
 
 def verify_password(input_password, stored_hash, salt):
@@ -101,33 +231,23 @@ def get_hosts_from_backend(backend):
         return None
 
 
+# Global cache instance
+proxy_cache = ProxyStatusCache()
+background_monitor = None
+
+
 def get_all_hosts():
-    """Get all hosts from all configured backends"""
-    all_hosts = []
+    """Get all hosts from cache or fallback to direct checking"""
+    # Try to get from cache first
+    cache_data = proxy_cache.get_all()
 
-    for backend in BACKENDS:
-        hosts = get_hosts_from_backend(backend)
+    if cache_data["hosts"]:
+        # Return cached data as list
+        return list(cache_data["hosts"].values())
 
-        if hosts is None:
-            # Backend is down, add placeholder entry
-            all_hosts.append(
-                {
-                    "name": f"{backend['host']} (proxy down)",
-                    "status": 0,
-                    "backend_name": backend["host"],
-                    "backend_address": backend["address"],
-                    "backend_password": backend["password"],
-                    "is_proxy_down": True,
-                }
-            )
-        else:
-            # Add all hosts from this backend
-            for host_name, host_data in hosts.items():
-                host_data["name"] = host_name
-                host_data["is_proxy_down"] = False
-                all_hosts.append(host_data)
-
-    return all_hosts
+    # Cache is empty (likely all backends are down), return empty list
+    # The background thread will continue trying to connect
+    return []
 
 
 @app.route("/")
@@ -135,6 +255,31 @@ def status():
     """Main status page showing all hosts"""
     hosts = get_all_hosts()
     return render_template("status.html", hosts=hosts)
+
+
+@app.route("/api/status")
+def api_status():
+    """API endpoint returning JSON status for JavaScript polling"""
+    cache_data = proxy_cache.get_all()
+
+    # Convert to list format expected by UI
+    hosts_list = []
+    for host_data in cache_data["hosts"].values():
+        hosts_list.append(host_data)
+
+    return jsonify(
+        {
+            "success": True,
+            "hosts": hosts_list,
+            "last_updated": cache_data["last_updated"].isoformat()
+            if cache_data["last_updated"]
+            else None,
+            "cache_info": {
+                "is_stale": proxy_cache.is_stale(),
+                "host_count": len(cache_data["hosts"]),
+            },
+        }
+    )
 
 
 @app.route("/wol", methods=["POST"])
@@ -182,7 +327,43 @@ def send_wol():
 
 def main():
     """Main entry point for rewolserver"""
-    app.run(host="0.0.0.0", port=SERVICE_PORT, debug=True)
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="Rewolserver - Remote Wake-on-LAN server service"
+    )
+    parser.add_argument(
+        "--config", default="config.yaml", help="Path to configuration file"
+    )
+    args = parser.parse_args()
+
+    # Load configuration using the provided path
+    global \
+        config, \
+        BACKENDS, \
+        SERVICE_PASSWORD, \
+        SERVICE_SALT, \
+        SERVICE_PORT, \
+        background_monitor
+    config = load_config(args.config)
+    app.logger.info(f"Loaded configuration from {args.config}")
+
+    # Set configuration variables
+    BACKENDS = config.get("backends", [])
+    SERVICE_PASSWORD = config["service"]["password"]
+    SERVICE_SALT = config["service"]["salt"]
+    SERVICE_PORT = config["service"]["port"]
+
+    # Initialize background monitor
+    background_monitor = BackgroundMonitorThread(BACKENDS, proxy_cache)
+
+    # Start background monitoring thread
+    background_monitor.start()
+
+    try:
+        app.run(host="0.0.0.0", port=SERVICE_PORT, debug=True)
+    finally:
+        # Clean up background thread on shutdown
+        background_monitor.stop()
 
 
 if __name__ == "__main__":

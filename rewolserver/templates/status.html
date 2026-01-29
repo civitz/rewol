@@ -82,6 +82,12 @@
 <body>
     <h1>Remote Wake on LAN</h1>
     
+    <div id="status-info" style="margin-bottom: 15px; font-size: 0.9em; color: #666; padding: 8px; background-color: #f5f5f5; border-radius: 4px;">
+        <strong>Status:</strong> 
+        <span id="last-updated">Loading status...</span>
+        <span id="polling-status" style="margin-left: 15px; font-weight: bold;"></span>
+    </div>
+    
     <div class="host-list">
         <h2>Hosts</h2>
         
@@ -170,8 +176,144 @@
                 errorElement.textContent = error.error || error.message || 'Failed to send WOL command';
             });
             
-            return false; // Prevent form submission
+         return false; // Prevent form submission
+     }
+    
+    // JavaScript Polling for real-time updates
+    function startStatusPolling() {
+        const pollInterval = 10000; // 10 seconds as requested
+        let pollingActive = true;
+        let lastUpdateTime = null;
+        
+        function updateStatusDisplay() {
+            if (!pollingActive) return;
+            
+            // Show polling activity
+            document.getElementById('polling-status').textContent = 'Checking for updates...';
+            
+            fetch('/api/status')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        // Update last updated time
+                        const updateTime = data.last_updated ? new Date(data.last_updated) : new Date();
+                        document.getElementById('last-updated').textContent = 
+                            `Last updated: ${updateTime.toLocaleTimeString()}`;
+                        
+                        // Show polling success
+                        document.getElementById('polling-status').textContent = 'Up to date';
+                        document.getElementById('polling-status').style.color = '#4CAF50';
+                        
+                        // Update host statuses if there are changes
+                        updateHostStatusesFromAPI(data.hosts);
+                        
+                        // If cache is stale, show warning
+                        if (data.cache_info.is_stale) {
+                            document.getElementById('polling-status').textContent = 'Using cached data (may be stale)';
+                            document.getElementById('polling-status').style.color = '#FF9800';
+                        }
+                    } else {
+                        throw new Error('Invalid response format');
+                    }
+                })
+                .catch(error => {
+                    console.error('Polling error:', error);
+                    document.getElementById('polling-status').textContent = 'Update failed - will retry';
+                    document.getElementById('polling-status').style.color = '#f44336';
+                });
         }
-    </script>
+        
+        function updateHostStatusesFromAPI(apiHosts) {
+            // Create a map of current hosts by name for easy lookup
+            const currentHosts = {};
+            document.querySelectorAll('.host-item').forEach(hostElement => {
+                const hostName = hostElement.querySelector('.host-info strong').textContent;
+                currentHosts[hostName] = hostElement;
+            });
+            
+            // Update existing hosts or add new ones
+            apiHosts.forEach(apiHost => {
+                const existingHost = currentHosts[apiHost.name];
+                
+                if (existingHost) {
+                    // Update existing host status
+                    updateSingleHostStatus(existingHost, apiHost);
+                } else {
+                    // This would be a new host - in practice this shouldn't happen
+                    // as we're polling the same data, but handle it gracefully
+                    console.log('New host detected:', apiHost.name);
+                }
+            });
+        }
+        
+        function updateSingleHostStatus(hostElement, apiHost) {
+            // Update status indicator
+            const statusIndicator = hostElement.querySelector('.status-indicator');
+            if (apiHost.status == 1) {
+                statusIndicator.className = 'status-indicator status-up';
+            } else {
+                statusIndicator.className = 'status-indicator status-down';
+            }
+            
+            // Update proxy down status
+            const proxyDownElement = hostElement.querySelector('.proxy-down');
+            if (apiHost.is_proxy_down) {
+                if (!proxyDownElement) {
+                    const proxyDownSpan = document.createElement('span');
+                    proxyDownSpan.className = 'proxy-down';
+                    proxyDownSpan.textContent = 'rewol proxy down';
+                    const br = document.createElement('br');
+                    hostElement.querySelector('.host-info').appendChild(br);
+                    hostElement.querySelector('.host-info').appendChild(proxyDownSpan);
+                }
+            } else {
+                if (proxyDownElement) {
+                    // Remove proxy down indicator
+                    proxyDownElement.remove();
+                    const br = hostElement.querySelector('.host-info br');
+                    if (br) br.remove();
+                }
+            }
+            
+            // Update WOL button visibility
+            const wolButton = hostElement.querySelector('.wol-button');
+            if (wolButton) {
+                if (apiHost.status == 0 && !apiHost.is_proxy_down) {
+                    wolButton.style.display = 'block';
+                } else {
+                    wolButton.style.display = 'none';
+                }
+            }
+        }
+        
+        // Start polling
+        updateStatusDisplay();
+        const pollIntervalId = setInterval(updateStatusDisplay, pollInterval);
+        
+        // Cleanup function
+        return function stopPolling() {
+            pollingActive = false;
+            clearInterval(pollIntervalId);
+        };
+    }
+    
+    // Start polling when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize polling
+        const stopPolling = startStatusPolling();
+        
+        // Optional: Stop polling when page is hidden to save resources
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopPolling();
+            }
+        });
+    });
+</script>
 </body>
 </html>
