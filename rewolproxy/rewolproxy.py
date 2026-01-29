@@ -218,9 +218,9 @@ class HostMonitor:
     def stop(self):
         """Stop the monitoring thread"""
         self.running = False
-        if self.thread:
-            self.thread.join()
-            logger.info("Host monitoring thread stopped")
+        # Since this is a daemon thread, we don't need to join() it
+        # It will be automatically terminated when the main program exits
+        logger.info("Host monitoring thread stopped")
 
 
 def verify_password(input_password, stored_hash, salt):
@@ -379,7 +379,11 @@ def main():
             httpd.serve_forever()
         except KeyboardInterrupt:
             logger.info("Server shutting down...")
+            # Stop the host monitor first
             host_monitor.stop()
+            # Shutdown the HTTP server
+            httpd.shutdown()
+            logger.info("Server shutdown complete")
 
     except Exception as e:
         logger.error(f"Fatal error: {e}")
