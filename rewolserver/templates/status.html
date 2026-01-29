@@ -96,7 +96,7 @@
             <div class="status-indicator {% if host.status == 1 %}status-up{% else %}status-down{% endif %}"></div>
             <div class="host-info">
                 <strong>{{ host.name }}</strong><br>
-                <small>Proxy: {{ host.backend_name }} ({{ host.backend_address }})</small>
+                <small>via {{ host.backend_name }} at {{ host.backend_address }}</small>
                 {% if host.is_proxy_down %}
                 <br><span class="proxy-down">rewol proxy down</span>
                 {% endif %}
