@@ -12,12 +12,12 @@ import hashlib
 import json
 import logging
 import os
-import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import pythonping
 import yaml
 import wakeonlan
 from prometheus_client import (
@@ -169,17 +169,22 @@ class HostMonitor:
         self.thread = None
 
     def _ping_host(self, ip):
-        """Ping a host and return True if reachable"""
+        """Ping a host using pythonping and return True if reachable"""
         try:
-            # Use ping with timeout
-            result = subprocess.run(
-                ["ping", "-c", "1", "-W", "2", ip],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=5,
+            # Use pythonping to send ICMP echo request
+            response = pythonping.ping(ip, timeout=2, count=1)
+            return response.success()
+        except Exception as e:
+            logger.error(f"Error pinging host {ip}: {e}")
+            return False
+        except socket.gaierror:
+            # Hostname resolution failed
+            return False
+        except PermissionError:
+            # Raw sockets require root privileges on some systems
+            logger.error(
+                f"Permission denied: ICMP ping requires root privileges for {ip}"
             )
-            return result.returncode == 0
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
             return False
         except Exception as e:
             logger.error(f"Error pinging host {ip}: {e}")
