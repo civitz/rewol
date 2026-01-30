@@ -88,40 +88,57 @@ class ProxyStatusCache:
 class BackgroundMonitorThread:
     """Background thread for continuous proxy monitoring"""
 
-    def __init__(self, backends, cache):
+    def __init__(self, backends, cache, monitor_interval=5, max_retries=3):
         self.backends = backends
         self.cache = cache
         self.running = False
         self.thread = None
-        self.monitor_interval = 5  # Check proxies every 5 seconds
+        self.monitor_interval = (
+            monitor_interval  # Check proxies every monitor_interval seconds
+        )
+        self.max_retries = max_retries  # Maximum number of retries for failed requests
         self.logger = app.logger
 
     def _check_proxy_status(self, backend):
-        """Check status of a single proxy backend"""
-        try:
-            url = f"http://{backend['address']}/status"
-            response = requests.get(url, timeout=3)
+        """Check status of a single proxy backend with retry logic"""
+        url = f"http://{backend['address']}/status"
 
-            if response.status_code == 200:
-                hosts = parse_prometheus_metrics(response.text)
-                # Add backend info to each host
-                result = {}
-                for host_name, host_data in hosts.items():
-                    host_data["backend_name"] = backend["host"]
-                    host_data["backend_address"] = backend["address"]
-                    host_data["backend_password"] = backend["password"]
-                    host_data["name"] = host_name
-                    host_data["is_proxy_down"] = False
-                    result[host_name] = host_data
-                return result
-            else:
-                self.logger.warning(
-                    f"Backend {backend['host']} returned status {response.status_code}"
-                )
-                return None
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error connecting to backend {backend['host']}: {e}")
-            return None
+        for attempt in range(self.max_retries):
+            try:
+                response = requests.get(url, timeout=3)
+
+                if response.status_code == 200:
+                    hosts = parse_prometheus_metrics(response.text)
+                    # Add backend info to each host
+                    result = {}
+                    for host_name, host_data in hosts.items():
+                        host_data["backend_name"] = backend["host"]
+                        host_data["backend_address"] = backend["address"]
+                        host_data["backend_password"] = backend["password"]
+                        host_data["name"] = host_name
+                        host_data["is_proxy_down"] = False
+                        result[host_name] = host_data
+                    return result
+                else:
+                    self.logger.warning(
+                        f"Backend {backend['host']} returned status {response.status_code}"
+                    )
+                    return None
+
+            except requests.exceptions.RequestException as e:
+                if attempt < self.max_retries - 1:  # Don't log on the last attempt
+                    self.logger.debug(
+                        f"Attempt {attempt + 1} failed for backend {backend['host']}: {e}"
+                    )
+                else:
+                    self.logger.error(
+                        f"Error connecting to backend {backend['host']} after {self.max_retries} attempts: {e}"
+                    )
+                # Wait briefly before retrying (except on last attempt)
+                if attempt < self.max_retries - 1:
+                    time.sleep(1)
+
+        return None
 
     def _monitor_loop(self):
         """Main monitoring loop"""
@@ -354,7 +371,11 @@ def main():
     SERVICE_PORT = config["service"]["port"]
 
     # Initialize background monitor
-    background_monitor = BackgroundMonitorThread(BACKENDS, proxy_cache)
+    monitor_interval = config.get("service", {}).get("monitor_interval", 5)
+    max_retries = config.get("service", {}).get("max_retries", 3)
+    background_monitor = BackgroundMonitorThread(
+        BACKENDS, proxy_cache, monitor_interval, max_retries
+    )
 
     # Start background monitoring thread
     background_monitor.start()

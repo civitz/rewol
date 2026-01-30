@@ -10,5 +10,7 @@ service:
   password: "<base64 of the salted password>"
   salt: "<base64 of salt>"
   port: 5000
+  # monitor_interval: 5  # Optional: Interval in seconds for checking proxy status (default: 5)
+  # max_retries: 3      # Optional: Maximum number of retries for failed backend requests (default: 3)
 
 
