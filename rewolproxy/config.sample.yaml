@@ -18,3 +18,7 @@ hosts:
   - host: "server1"
     macAddress: "AA:BB:CC:DD:EE:FF"
     ip: "192.168.1.200"
+  - host: "workstation2"
+    macAddress: "11:22:33:44:55:66"
+    ip: "192.168.2.100"
+    interface: "eth1"  # Optional: specify network interface for WOL packet; could also be an ip address if the physical interface for wol is different.

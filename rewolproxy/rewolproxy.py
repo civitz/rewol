@@ -321,7 +321,13 @@ class RequestHandler(BaseHTTPRequestHandler):
 
                 # Send WOL signal
                 try:
-                    wakeonlan.send_magic_packet(host_found["macAddress"])
+                    interface = host_found.get("interface")  # Get optional interface
+                    if interface:
+                        wakeonlan.send_magic_packet(
+                            host_found["macAddress"], interface=interface
+                        )
+                    else:
+                        wakeonlan.send_magic_packet(host_found["macAddress"])
                     logger.info(
                         f"WOL signal sent to {host_name} ({host_found['macAddress']})"
                     )
