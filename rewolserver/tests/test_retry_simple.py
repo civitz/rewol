@@ -16,8 +16,6 @@ import rewol
 
 def test_configurable_max_retries():
     """Test that max_retries can be configured"""
-    print("Testing configurable max retries...")
-
     # Create a temporary config file with custom max_retries
     config_content = """
 backends:
@@ -54,23 +52,12 @@ service:
             f"Expected monitor.max_retries=5, got {monitor.max_retries}"
         )
 
-        print("✓ Configurable max retries test passed")
-        return True
-
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
     finally:
         os.unlink(config_path)
 
 
 def test_default_max_retries():
     """Test that default max_retries is used when not specified"""
-    print("Testing default max retries...")
-
     # Create a temporary config file without max_retries
     config_content = """
 backends:
@@ -106,23 +93,12 @@ service:
             f"Expected monitor.max_retries=3, got {monitor.max_retries}"
         )
 
-        print("✓ Default max retries test passed")
-        return True
-
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
     finally:
         os.unlink(config_path)
 
 
 def test_retry_behavior_integration():
     """Test retry behavior with actual failed requests"""
-    print("Testing retry behavior with actual failed requests...")
-
     # Create a simple test to verify retry behavior
     cache = rewol.ProxyStatusCache()
     backends = [
@@ -149,34 +125,10 @@ def test_retry_behavior_integration():
     data = cache.get_all()
     assert len(data["hosts"]) > 0, "Expected some data in cache after monitoring cycle"
 
-    print("✓ Retry behavior integration test passed")
-    return True
-
-
-def run_all_tests():
-    """Run all retry tests"""
-    print("Running retry configuration tests...\n")
-
-    try:
-        success1 = test_configurable_max_retries()
-        success2 = test_default_max_retries()
-        success3 = test_retry_behavior_integration()
-
-        if success1 and success2 and success3:
-            print("\n🎉 All retry tests passed!")
-            return True
-        else:
-            print("\n❌ Some tests failed")
-            return False
-
-    except Exception as e:
-        print(f"\n❌ Test execution failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
-
 
 if __name__ == "__main__":
-    success = run_all_tests()
-    sys.exit(0 if success else 1)
+    # Run tests directly if executed as script
+    test_configurable_max_retries()
+    test_default_max_retries()
+    test_retry_behavior_integration()
+    print("All retry tests passed!")

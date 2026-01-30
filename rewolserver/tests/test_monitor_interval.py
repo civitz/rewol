@@ -16,8 +16,6 @@ import rewol
 
 def test_configurable_monitor_interval():
     """Test that monitor_interval can be configured"""
-    print("Testing configurable monitor interval...")
-
     # Create a temporary config file with custom monitor_interval
     config_content = """
 backends:
@@ -67,23 +65,12 @@ service:
         monitor.stop()
         assert monitor.running is False
 
-        print("✓ Configurable monitor interval test passed")
-        return True
-
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
     finally:
         os.unlink(config_path)
 
 
 def test_default_monitor_interval():
     """Test that default monitor_interval is used when not specified"""
-    print("Testing default monitor interval...")
-
     # Create a temporary config file without monitor_interval
     config_content = """
 backends:
@@ -121,42 +108,12 @@ service:
             f"Expected monitor.monitor_interval=5, got {monitor.monitor_interval}"
         )
 
-        print("✓ Default monitor interval test passed")
-        return True
-
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
     finally:
         os.unlink(config_path)
 
 
-def run_all_tests():
-    """Run all monitor interval tests"""
-    print("Running monitor interval configuration tests...\n")
-
-    try:
-        success1 = test_configurable_monitor_interval()
-        success2 = test_default_monitor_interval()
-
-        if success1 and success2:
-            print("\n🎉 All monitor interval tests passed!")
-            return True
-        else:
-            print("\n❌ Some tests failed")
-            return False
-
-    except Exception as e:
-        print(f"\n❌ Test execution failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
-
-
 if __name__ == "__main__":
-    success = run_all_tests()
-    sys.exit(0 if success else 1)
+    # Run tests directly if executed as script
+    test_configurable_monitor_interval()
+    test_default_monitor_interval()
+    print("All monitor interval tests passed!")
